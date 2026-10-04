@@ -1,0 +1,120 @@
+version: "3.9"
+
+services:
+  master:
+    image: redis:7
+    container_name: master
+    command: redis-server /etc/redis/redis.conf
+    volumes:
+      - ./redis/redis.conf:/etc/redis/redis.conf:ro
+      - master-data:/data
+    networks:
+      redis-net:
+        ipv4_address: 192.168.0.2
+
+  replica-1:
+    image: redis:7
+    container_name: replica-1
+    command: redis-server /etc/redis/redis.conf --replicaof 192.168.0.2 6379
+    volumes:
+      - ./redis/redis.conf:/etc/redis/redis.conf:ro
+      - replica1-data:/data
+    depends_on:
+      - master
+    networks:
+      redis-net:
+        ipv4_address: 192.168.0.3
+
+  replica-2:
+    image: redis:7
+    container_name: replica-2
+    command: redis-server /etc/redis/redis.conf --replicaof 192.168.0.2 6379
+    volumes:
+      - ./redis/redis.conf:/etc/redis/redis.conf:ro
+      - replica2-data:/data
+    depends_on:
+      - master
+    networks:
+      redis-net:
+        ipv4_address: 192.168.0.4
+
+  sentinel-1:
+    image: redis:7
+    container_name: sentinel-1
+    command: >
+      sh -c "cp /etc/redis/sentinel1.conf /data/sentinel.conf &&
+             redis-sentinel /data/sentinel.conf"
+    volumes:
+      - ./sentinel/sentinel1.conf:/etc/redis/sentinel1.conf:ro
+      - sentinel1-data:/data
+    depends_on:
+      - master
+      - replica-1
+      - replica-2
+    networks:
+      redis-net:
+        ipv4_address: 192.168.0.5
+
+  sentinel-2:
+    image: redis:7
+    container_name: sentinel-2
+    command: >
+      sh -c "cp /etc/redis/sentinel2.conf /data/sentinel.conf &&
+             redis-sentinel /data/sentinel.conf"
+    volumes:
+      - ./sentinel/sentinel2.conf:/etc/redis/sentinel2.conf:ro
+      - sentinel2-data:/data
+    depends_on:
+      - master
+      - replica-1
+      - replica-2
+    networks:
+      redis-net:
+        ipv4_address: 192.168.0.6
+
+  sentinel-3:
+    image: redis:7
+    container_name: sentinel-3
+    command: >
+      sh -c "cp /etc/redis/sentinel3.conf /data/sentinel.conf &&
+             redis-sentinel /data/sentinel.conf"
+    volumes:
+      - ./sentinel/sentinel3.conf:/etc/redis/sentinel3.conf:ro
+      - sentinel3-data:/data
+    depends_on:
+      - master
+      - replica-1
+      - replica-2
+    networks:
+      redis-net:
+        ipv4_address: 192.168.0.7
+  
+  app:
+    build: ./hw1-redis
+    container_name: app
+    ports:
+      - "8080:8080"
+    depends_on:
+      - sentinel-1
+      - sentinel-2
+      - sentinel-3
+      - master
+      - replica-1
+      - replica-2
+    networks:
+      - redis-net
+
+volumes:
+  master-data:
+  replica1-data:
+  replica2-data:
+  sentinel1-data:
+  sentinel2-data:
+  sentinel3-data:
+
+networks:
+  redis-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.0.0/24

@@ -1,0 +1,24 @@
+# Java / Maven
+hw1-redis/target/
+hw1-redis/.mvn/
+hw1-redis/mvnw
+hw1-redis/mvnw.cmd
+*.class
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# Local
+.env
