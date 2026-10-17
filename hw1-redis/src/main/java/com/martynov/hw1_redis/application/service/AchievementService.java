@@ -17,6 +17,7 @@ public class AchievementService {
     private static final String ACHIEVEMENTS_KEY = "achievements:";
 
     private final RedisTemplate<String, Object> redisTemplate;
+    private final PlayerService playerService;
 
     /**
      * Добавление достижения игроку.
@@ -25,6 +26,8 @@ public class AchievementService {
             String playerId,
             String achievement
     ) {
+        playerService.requirePlayerExists(playerId);
+
         Long added = redisTemplate
                 .opsForSet()
                 .add(

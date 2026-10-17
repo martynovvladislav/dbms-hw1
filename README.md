@@ -24,13 +24,17 @@
   replica-read-only yes, те же настройки персистентности.
 - sentinel-1, sentinel-2, sentinel-3 — мониторят мастера.
   Кворум 2, down-after-milliseconds 5000.
+  Рабочий конфиг каждого Sentinel хранится в собственном volume и сохраняется
+  между перезапусками. Исходный конфиг копируется только при первом запуске.
 - app — Spring Boot REST API.
   Подключается к Redis через Sentinel (Lettuce).
 
 Связи:
 
 - app к sentinel-1/2/3 — получает адрес мастера
-- app к master (запись), replica (чтение)
+- app к master — все записи, чтение профилей и их кеша, работа со Streams
+- app к replica — чтение лидерборда и достижений (REPLICA_PREFERRED;
+  при отсутствии доступных реплик чтение выполняется с мастера)
 - replica-1/2 к master (репликация)
 - sentinel-1/2/3 к master, replica-1/2 (мониторинг)
 
@@ -56,7 +60,6 @@
 
 - docker-compose.yml — все сервисы.
 - README.md — этот файл.
-- dzl_check.py — скрипт самопроверки.
 
 Конфиги Redis:
 
@@ -70,18 +73,19 @@
 
 Приложение:
 
-- app/Dockerfile
-- app/pom.xml
-- app/src/main/java/com/martynov/hw1_redis/Hw1RedisApplication.java
-- app/src/main/java/com/martynov/hw1_redis/config/RedisConfig.java
-- app/src/main/java/com/martynov/hw1_redis/api/controllers/PlayerController.java
-- app/src/main/java/com/martynov/hw1_redis/api/controllers/LeaderboardController.java
-- app/src/main/java/com/martynov/hw1_redis/api/controllers/AchievementController.java
-- app/src/main/java/com/martynov/hw1_redis/application/service/PlayerService.java
-- app/src/main/java/com/martynov/hw1_redis/application/service/LeaderboardService.java
-- app/src/main/java/com/martynov/hw1_redis/application/service/AchievementService.java
-- app/src/main/java/com/martynov/hw1_redis/application/service/NotificationConsumer.java
-- app/src/main/resources/application.properties
+- hw1-redis/Dockerfile
+- hw1-redis/pom.xml
+- hw1-redis/src/main/java/com/martynov/hw1_redis/Hw1RedisApplication.java
+- hw1-redis/src/main/java/com/martynov/hw1_redis/infrastructure/config/RedisConfiguration.java
+- hw1-redis/src/main/java/com/martynov/hw1_redis/api/controllers/PlayerController.java
+- hw1-redis/src/main/java/com/martynov/hw1_redis/api/controllers/LeaderboardController.java
+- hw1-redis/src/main/java/com/martynov/hw1_redis/api/controllers/AchievementController.java
+- hw1-redis/src/main/java/com/martynov/hw1_redis/application/service/PlayerService.java
+- hw1-redis/src/main/java/com/martynov/hw1_redis/application/service/LeaderboardService.java
+- hw1-redis/src/main/java/com/martynov/hw1_redis/application/service/AchievementService.java
+- hw1-redis/src/main/java/com/martynov/hw1_redis/application/service/NotificationConsumer.java
+- hw1-redis/src/main/java/com/martynov/hw1_redis/application/service/NotificationCleanupJob.java
+- hw1-redis/src/main/resources/application.properties
 
 ---
 
@@ -139,6 +143,10 @@ sentinel-1, sentinel-2, sentinel-3, app.
 - GET /api/players/{id}/achievements/{name} — проверить.
 - GET /api/players/{id1}/achievements/common/{id2} — общие.
 
+Изменение уровня, фиксация входа, начисление очков и добавление достижения
+требуют существующего профиля. Проверка выполняется на мастере; при отсутствии
+игрока API возвращает 404 без записи данных.
+
 ---
 
 ## Примеры запросов
@@ -195,7 +203,9 @@ sentinel-1, sentinel-2, sentinel-3, app.
 Ключ cache:player:{id} — String (JSON) — TTL 60 сек.
 Ключ tournament:main — Sorted Set — TTL бесконечно.
 Ключ achievements:{id} — Set — TTL бесконечно.
-Ключ notifications — Stream.
+Ключ notifications — Stream. Сообщения хранятся 7 дней с момента добавления.
+Джоба удаления запускается раз в минуту и удаляет старые
+сообщения командой XTRIM MINID.
 
 ---
 

@@ -3,11 +3,11 @@ package com.martynov.hw1_redis.application.service;
 import com.martynov.hw1_redis.application.dto.player.BatchPlayerDto;
 import com.martynov.hw1_redis.application.dto.player.BatchResponse;
 import com.martynov.hw1_redis.application.dto.player.PlayerDto;
+import com.martynov.hw1_redis.application.exception.PlayerNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.core.RedisCallback;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
@@ -39,7 +39,6 @@ public class PlayerService {
             return count
             """;
 
-    private final RedisTemplate<String, Object> redisTemplate;
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
 
@@ -50,28 +49,11 @@ public class PlayerService {
 
         String key = playerKey(id);
 
-        Map<String, Object> fields = new HashMap<>();
-
-        if (dto.getName() != null) {
-            fields.put("name", dto.getName());
-        }
-
-        if (dto.getLevel() != null) {
-            fields.put("level", dto.getLevel());
-        }
-
-        if (dto.getRegion() != null) {
-            fields.put("region", dto.getRegion());
-        }
-
-        fields.put(
-                "created_at",
-                dto.getCreatedAt() != null
-                        ? dto.getCreatedAt()
-                        : System.currentTimeMillis()
+        Map<String, String> fields = profileFieldsAsMap(
+                dto.getName(), dto.getLevel(), dto.getRegion(), dto.getCreatedAt()
         );
 
-        redisTemplate.opsForHash().putAll(key, fields);
+        stringRedisTemplate.opsForHash().putAll(key, fields);
 
         invalidateCache(id);
 
@@ -106,10 +88,9 @@ public class PlayerService {
         // 2. Redis Hash
         log.info("Cache MISS: {}", id);
 
-        Map<Object, Object> raw =
-                redisTemplate
-                        .opsForHash()
-                        .entries(playerKey(id));
+        Map<Object, Object> raw = stringRedisTemplate
+                .opsForHash()
+                .entries(playerKey(id));
 
         if (raw.isEmpty()) {
             return null;
@@ -125,17 +106,15 @@ public class PlayerService {
     }
 
     /**
-     * Атомарное изменение уровня
+     * Изменение уровня существующего игрока.
      */
     public Long incrementLevel(String id, long delta) {
+        String key = playerKey(id);
+        requirePlayerExists(id);
 
-        Long newLevel = redisTemplate
+        Long newLevel = stringRedisTemplate
                 .opsForHash()
-                .increment(
-                        playerKey(id),
-                        "level",
-                        delta
-                );
+                .increment(key, "level", delta);
 
         invalidateCache(id);
 
@@ -154,6 +133,8 @@ public class PlayerService {
      * Фиксация входа игрока.
      */
     public Long recordLogin(String id) {
+        requirePlayerExists(id);
+
         Long count = stringRedisTemplate.execute(
                 new DefaultRedisScript<>(
                         LOGIN_SCRIPT,
@@ -180,7 +161,7 @@ public class PlayerService {
 
         long start = System.currentTimeMillis();
 
-        redisTemplate.executePipelined(
+        stringRedisTemplate.executePipelined(
                 (RedisCallback<Object>) connection -> {
 
                     for (BatchPlayerDto dto : profiles) {
@@ -211,42 +192,44 @@ public class PlayerService {
             BatchPlayerDto dto
     ) {
         Map<byte[], byte[]> fields = new HashMap<>();
-
-        if (dto.getName() != null) {
-            fields.put(
-                    bytes("name"),
-                    bytes(dto.getName())
-            );
-        }
-
-        if (dto.getLevel() != null) {
-            fields.put(
-                    bytes("level"),
-                    bytes(dto.getLevel().toString())
-            );
-        }
-
-        if (dto.getRegion() != null) {
-            fields.put(
-                    bytes("region"),
-                    bytes(dto.getRegion())
-            );
-        }
-
-        long createdAt =
-                dto.getCreatedAt() != null
-                        ? dto.getCreatedAt()
-                        : System.currentTimeMillis();
-
-        fields.put(
-                bytes("created_at"),
-                bytes(String.valueOf(createdAt))
-        );
+        profileFieldsAsMap(dto.getName(), dto.getLevel(), dto.getRegion(), dto.getCreatedAt())
+                .forEach((field, value) -> fields.put(asBytes(field), asBytes(value)));
 
         connection.hashCommands().hMSet(
-                bytes(playerKey(dto.getId())),
+                asBytes(playerKey(dto.getId())),
                 fields
         );
+    }
+
+    /**
+     * Преобразование полей профиля в мапу для обычной записи и батчей
+     */
+    private Map<String, String> profileFieldsAsMap(
+            String name,
+            Integer level,
+            String region,
+            Long createdAt
+    ) {
+        Map<String, String> fields = new HashMap<>();
+
+        if (name != null) {
+            fields.put("name", name);
+        }
+
+        if (level != null) {
+            fields.put("level", level.toString());
+        }
+
+        if (region != null) {
+            fields.put("region", region);
+        }
+
+        fields.put(
+                "created_at",
+                String.valueOf(createdAt != null ? createdAt : System.currentTimeMillis())
+        );
+
+        return fields;
     }
 
     /**
@@ -335,12 +318,21 @@ public class PlayerService {
                 )
         );
 
-        redisTemplate
+        stringRedisTemplate
                 .opsForStream()
                 .add(
                         NOTIFICATIONS_STREAM,
                         notification
                 );
+    }
+
+    /**
+     * Проверка, что есть такой игрок (на мастере)
+     */
+    public void requirePlayerExists(String id) {
+        if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(playerKey(id)))) {
+            throw new PlayerNotFoundException();
+        }
     }
 
     private String playerKey(String id) {
@@ -355,7 +347,7 @@ public class PlayerService {
         return LOGINS_KEY + id;
     }
 
-    private byte[] bytes(String value) {
+    private byte[] asBytes(String value) {
         return value.getBytes(StandardCharsets.UTF_8);
     }
 }
