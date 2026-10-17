@@ -21,11 +21,14 @@ public class LeaderboardService {
     private static final String LEADERBOARD_KEY = "tournament:main";
 
     private final StringRedisTemplate redisTemplate;
+    private final PlayerService playerService;
 
     public LeaderboardService(
-            @Qualifier("replicaStringRedisTemplate") StringRedisTemplate redisTemplate
+            @Qualifier("replicaStringRedisTemplate") StringRedisTemplate redisTemplate,
+            PlayerService playerService
     ) {
         this.redisTemplate = redisTemplate;
+        this.playerService = playerService;
     }
 
     /**
@@ -35,6 +38,8 @@ public class LeaderboardService {
             String playerId,
             double delta
     ) {
+        playerService.requirePlayerExists(playerId);
+
         Double newScore = redisTemplate
                 .opsForZSet()
                 .incrementScore(

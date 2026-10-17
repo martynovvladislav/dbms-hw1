@@ -3,6 +3,7 @@ package com.martynov.hw1_redis.application.service;
 import com.martynov.hw1_redis.application.dto.player.BatchPlayerDto;
 import com.martynov.hw1_redis.application.dto.player.BatchResponse;
 import com.martynov.hw1_redis.application.dto.player.PlayerDto;
+import com.martynov.hw1_redis.application.exception.PlayerNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.RedisConnection;
@@ -105,17 +106,15 @@ public class PlayerService {
     }
 
     /**
-     * Атомарное изменение уровня
+     * Изменение уровня существующего игрока.
      */
     public Long incrementLevel(String id, long delta) {
+        String key = playerKey(id);
+        requirePlayerExists(id);
 
         Long newLevel = stringRedisTemplate
                 .opsForHash()
-                .increment(
-                        playerKey(id),
-                        "level",
-                        delta
-                );
+                .increment(key, "level", delta);
 
         invalidateCache(id);
 
@@ -134,6 +133,8 @@ public class PlayerService {
      * Фиксация входа игрока.
      */
     public Long recordLogin(String id) {
+        requirePlayerExists(id);
+
         Long count = stringRedisTemplate.execute(
                 new DefaultRedisScript<>(
                         LOGIN_SCRIPT,
@@ -323,6 +324,15 @@ public class PlayerService {
                         NOTIFICATIONS_STREAM,
                         notification
                 );
+    }
+
+    /**
+     * Проверка, что есть такой игрок (на мастере)
+     */
+    public void requirePlayerExists(String id) {
+        if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(playerKey(id)))) {
+            throw new PlayerNotFoundException();
+        }
     }
 
     private String playerKey(String id) {
