@@ -42,8 +42,9 @@ services:
     image: redis:7
     container_name: sentinel-1
     command: >
-      sh -c "cp /etc/redis/sentinel1.conf /data/sentinel.conf &&
-             redis-sentinel /data/sentinel.conf"
+      sh -c "if [ ! -f /data/sentinel.conf ]; then
+               cp /etc/redis/sentinel1.conf /data/sentinel.conf;
+             fi && exec redis-sentinel /data/sentinel.conf"
     volumes:
       - ./sentinel/sentinel1.conf:/etc/redis/sentinel1.conf:ro
       - sentinel1-data:/data
@@ -59,8 +60,9 @@ services:
     image: redis:7
     container_name: sentinel-2
     command: >
-      sh -c "cp /etc/redis/sentinel2.conf /data/sentinel.conf &&
-             redis-sentinel /data/sentinel.conf"
+      sh -c "if [ ! -f /data/sentinel.conf ]; then
+               cp /etc/redis/sentinel2.conf /data/sentinel.conf;
+             fi && exec redis-sentinel /data/sentinel.conf"
     volumes:
       - ./sentinel/sentinel2.conf:/etc/redis/sentinel2.conf:ro
       - sentinel2-data:/data
@@ -76,8 +78,9 @@ services:
     image: redis:7
     container_name: sentinel-3
     command: >
-      sh -c "cp /etc/redis/sentinel3.conf /data/sentinel.conf &&
-             redis-sentinel /data/sentinel.conf"
+      sh -c "if [ ! -f /data/sentinel.conf ]; then
+               cp /etc/redis/sentinel3.conf /data/sentinel.conf;
+             fi && exec redis-sentinel /data/sentinel.conf"
     volumes:
       - ./sentinel/sentinel3.conf:/etc/redis/sentinel3.conf:ro
       - sentinel3-data:/data
