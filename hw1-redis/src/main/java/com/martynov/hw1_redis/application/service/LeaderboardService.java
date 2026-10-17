@@ -3,8 +3,8 @@ package com.martynov.hw1_redis.application.service;
 import com.martynov.hw1_redis.application.dto.leaderboard.RankResponse;
 import com.martynov.hw1_redis.application.dto.leaderboard.ScoreDto;
 import com.martynov.hw1_redis.application.dto.leaderboard.TopPlayerResponse;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
@@ -16,12 +16,17 @@ import java.util.Set;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class LeaderboardService {
 
     private static final String LEADERBOARD_KEY = "tournament:main";
 
     private final StringRedisTemplate redisTemplate;
+
+    public LeaderboardService(
+            @Qualifier("replicaStringRedisTemplate") StringRedisTemplate redisTemplate
+    ) {
+        this.redisTemplate = redisTemplate;
+    }
 
     /**
      * Добавляет/изменяет количество очков игрока
